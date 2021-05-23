@@ -7,14 +7,20 @@
     author: Ala Golshani
 """
 
-from menu import menu, sign_in
+from menu import sign_in
 from user import User
-
+from fileModule import read_from_file, write_to_file
+import logging
 
 if __name__ == '__main__':
-    User.reg_read()
-    user = sign_in()
-    if user is False:
-        exit()
-    menu(user)
-    User.reg_write()
+    logger = logging.getLogger('logger')
+    f_handler = logging.FileHandler(filename='reminder.log')
+    f_handler.setLevel(logging.INFO)
+    f_format = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                                 datefmt='%m-%d-%y %H:%M:%S')
+    f_handler.setFormatter(f_format)
+    logger.addHandler(f_handler)
+
+    User.user_list = read_from_file()
+    sign_in(logger)
+    write_to_file(User.user_list)

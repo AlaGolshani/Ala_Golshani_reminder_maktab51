@@ -1,23 +1,18 @@
 from hashlib import sha256
 from datetime import datetime, timedelta
-import csv
+from fileModule import write_to_file
 
 
 class User:
-    users = []  # List of all users object
+    user_list = []  # List of all users object
 
     def __init__(self, username, password=None):
-        """
-        :param username:
-        :param password:
-        """
-        self.id = None
         self.username = username
-        self.__hpassword = sha256(str(password).encode('utf-8')).hexdigest()
+        self.password = password
         self.tasks = []
-        self.categories = []  # User-defined categories name
-        self.shared_with_me = []  # List of task that shared with me
-        self.block = False  # block datetime, if user is blocked
+        self.shared_with_me = []  # list of tasks that shared with the user
+        self.block = False  # block datetime, if user was blocked
+        self.deleted_tasks = []
 
     @classmethod
     def register(cls):
@@ -25,117 +20,116 @@ class User:
             This method takes the new user information and registers her/him
             :return: the new user object
         """
-
-        username = input("Please enter a username: ")
-        if User.is_registered(username):
+        username = input("\33[35m\t\tPlease enter your username, 0 >> back: \33[m")
+        if username == '0':
+            return 'back'
+        try:
+            if User.user_list:
+                assert username not in [user.username for user in User.user_list]
+        except AssertionError:
             return False
 
         while True:
-            password = input("Please enter a password: ")
-            repeated_pass = input("Please enter the password again: ")
+            password = input('\33[35m\t\tPlease enter a password: \33[m')
+            repeated_pass = input('\33[35m\t\tPlease enter the password again: \33[m')
             if password == repeated_pass:
                 break
             else:
-                print('passwords are not the same.')
+                print('\33[35m\t\tpasswords are not the same.\33[m')
 
-        __Hashed_password = sha256(password.encode('utf-8')).hexdigest()
+        hashed_password = sha256(password.encode('utf-8')).hexdigest()
 
-        user = User(username, __Hashed_password)
+        user = User(username, hashed_password)
 
-        User.users.append(user)
+        User.user_list.append(user)
+        write_to_file(User.user_list)
         return user
 
     @classmethod
-    def login(cls):
+    def login(cls, logger):
         """
         This method takes the user information for login
         if she/he enters a wrong input more than three times,
         the account will be suspended for one day
-        :return: a Boolean that indicates whether the login was successful or not
+        :return: a boolean or string that indicates whether the login was successful or not
         """
         counter = 1
-        while True:
+        while counter <= 3:
+            username = None
+            while username is None:
+                username = input("\33[35m\t\tPlease enter your username, 0 >> back: \33[m")
+                if username == '0':
+                    return 'back'
+                try:
+                    assert User.user_list and username in [user.username for user in User.user_list]
+                except AssertionError:
+                    print('\33[35m\n\t\tThe username is invalid.')
+                    username = None
 
-            while True:
-                username = input("Please enter your username: ")
-                if User.is_registered(username):
-                    break
-                else:
-                    print('The username is invalid.')
-
-            password = input("Please enter your password: ")
+            password = input("\33[35m\t\tPlease enter your password: \33[m")
             hash_pass = sha256(str(password).encode('utf-8')).hexdigest()
-
-            for user in User.users:
-                if user.username == username and user.__hpassword == hash_pass:
-                    if user.block is False or \
-                            user.action + timedelta(days=1) > datetime.now():
+            user = None
+            for user in User.user_list:
+                if user.username == username and user.password == hash_pass:
+                    if user.block is False:
+                        return user
+                    elif user.block + timedelta(days=1) < datetime.now():
                         user.block = False
                         return user
                     else:
-                        print(f'Your account is blocked for {user.block.hour} hours.')
+                        total_seconds = (datetime.now() - user.block).total_seconds()
+                        hours = int(24 - total_seconds / (60 * 60))
+                        minutes = int(60 - (total_seconds % (60 * 60)) / 60)
+                        print(f'\33[35m\n\t\tYour account is block for '
+                              f'{hours} hours and {minutes} minutes.\33[m')
+                        input("\n\t\tPress Enter to Continue...")
                         return False
-                else:
-                    print('Wrong password.')
-                    if counter == 3:
-                        print('Your account has been blocked for one day.')
-                        user.block = datetime.now()
+
+            print('\33[35m\n\t\tWrong password.')
+            logger.warning(f'{username} entered a wrong password')
+            if counter == 3:
+                print('\33[35m\n\t\tYour account has been blocked for one day.\33[m')
+                logger.warning(f'{username} has been blocked for one day')
+                user.block = datetime.now()
+                write_to_file(User.user_list)
+                input("\n\t\tPress Enter to Continue...")
             counter += 1
 
-    @classmethod
-    def is_registered(cls, username):
-        for user in User.users:
-            if user.username == username and user.__hpassword:
-                return True
-        return False
-
-    @classmethod
-    def reg_write(cls, file_name='register.csv'):
-        with open(file_name, 'w', newline='', encoding='utf-8') as csvfile:
-            rows = [{'username': user.username,
-                     'password': user.__hpassword}
-                    for user in User.users]
-
-            fields = ['username', 'password']
-
-            csv_writer = csv.DictWriter(csvfile, fieldnames=fields)
-            csv_writer.writeheader()
-            csv_writer.writerows(rows)
-
-    @classmethod
-    def reg_read(cls):
-        with open('register.csv') as csvfile:
-            lines = csvfile.readlines()
-
-            rows = [row.strip().split(',') for row in lines]
-
-            for uname, pswrd in rows[1:]:
-                new_user = User(uname, None)
-                new_user.__hpassword = pswrd
-                User.users.append(new_user)
-
-    def change_pass(self):
+    def change_password(self):
+        """
+        This method is for changing the user password
+        """
         while True:
-            last_pass = input('enter current password:')
+            last_pass = input('\33[35m\t\tEnter current password:\33[m')
             hash_password = sha256(last_pass.encode('utf-8')).hexdigest()
 
-            if hash_password == self.__hpassword:
+            if hash_password == self.password:
                 break
-            print('invalid password. try again.')
+            print('\33[35m\t\tinvalid password. try again.\33[m')
 
         while True:
-            new_pass = input("Please enter new password: ")
-            repeated_pass = input("Please enter the password again: ")
+            new_pass = input("\33[35m\t\tPlease enter new password: \33[m")
+            repeated_pass = input("\33[35m\t\tPlease enter the password again: \33[m")
             if new_pass == repeated_pass:
                 break
             else:
-                print('passwords are not the same.')
+                print('\33[35m\t\tpasswords are not the same.\33[m')
 
         hash_password = sha256(new_pass.encode('utf-8')).hexdigest()
-        self.__hpassword = hash_password
+        self.password = hash_password
 
-        input("\nDone.\n\nPress Enter to Continue...")
+        input("\n\t\tDone.\n\t\tPress Enter to Continue...")
 
     def show_tasks(self):
-        for index in range(len(self.tasks)):
-            print(f'task {index} :\n', self.tasks[index].print())
+        """
+        shows all of the user tasks
+        """
+        if not self.tasks:   # self.tasks = []
+            print('\33[35m\t\tNo task defined yet...\33[m')
+            return False
+
+        for index, task in enumerate(self.tasks, 1):
+            if task.activation is True:
+                print(f'\33[93m task {index}\33[m =>'.center(100))
+                print(task)
+        return True
